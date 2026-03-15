@@ -425,6 +425,7 @@
 
         let grid = [];
         let solution = [];
+        let originalPuzzle = []; // Store original puzzle state
         let selectedCell = null;
         let selectedColor = 0;
         let difficulty = 'easy';
@@ -526,6 +527,7 @@
             const seed = Date.now();
             solution = generateSolution(seed);
             grid = createPuzzle(solution, difficulty, seed);
+            originalPuzzle = grid.map(row => [...row]); // Save original puzzle
             elapsedTime = 0;
             lastSaveTime = Date.now();
             
@@ -542,6 +544,7 @@
                 gameId: gameId,
                 grid: grid,
                 solution: solution,
+                originalPuzzle: originalPuzzle,
                 difficulty: difficulty,
                 elapsedTime: elapsedTime,
                 lastSaveTime: Date.now(),
@@ -570,6 +573,7 @@
             gameId = id;
             grid = state.grid;
             solution = state.solution;
+            originalPuzzle = state.originalPuzzle || state.grid.map(row => [...row]);
             difficulty = state.difficulty;
             gameMode = state.gameMode || 'single';
             
@@ -608,8 +612,7 @@
                         cell.style.background = COLORS[grid[i][j] - 1];
                         
                         // Check if fixed (part of original puzzle)
-                        const originalState = JSON.parse(localStorage.getItem('game_' + gameId));
-                        if (originalState && originalState.grid[i][j] === grid[i][j]) {
+                        if (originalPuzzle[i] && originalPuzzle[i][j] !== 0) {
                             cell.classList.add('fixed');
                         }
                     }
