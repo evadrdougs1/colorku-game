@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Colorku - Color Sudoku</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            color: white;
+        }
+
+        .header {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+        }
+
+        .game-container {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 100px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .difficulty-selector {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .difficulty-btn {
+            flex: 1;
+            padding: 10px;
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .difficulty-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 2px;
+            background: #333;
+            padding: 2px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            aspect-ratio: 1;
+        }
+
+        .cell {
+            aspect-ratio: 1;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            border-radius: 3px;
+        }
+
+        .cell:active {
+            transform: scale(0.9);
+        }
+
+        .cell.fixed {
+            cursor: not-allowed;
+            opacity: 0.9;
+        }
+
+        .cell.selected {
+            box-shadow: inset 0 0 0 3px #667eea;
+        }
+
+        .cell.error {
+            animation: shake 0.5s;
+            box-shadow: inset 0 0 0 3px #ff4444;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        /* Grid borders for 3x3 boxes */
+        .cell:nth-child(9n+3),
+        .cell:nth-child(9n+6) {
+            border-right: 2px solid #333;
+        }
+
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 2px solid #333;
+        }
+
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .color-btn {
+            aspect-ratio: 1;
+            border: 3px solid transparent;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .color-btn.selected {
+            border-color: #333;
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .color-btn.pattern::after {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            background-size: 8px 8px;
+            border-radius: 6px;
+        }
+
+        .timer {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-weight: 600;
+            display: none;
+        }
+
+        .message.success {
+            background: #4caf50;
+            color: white;
+            display: block;
+        }
+
+        .message.error {
+            background: #ff4444;
+            color: white;
+            display: block;
+        }
+
+        .multiplayer-mode {
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        .player-info {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 10px;
+        }
+
+        .player {
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            flex: 1;
+            margin: 0 5px;
+        }
+
+        .player.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .player.inactive {
+            background: #f0f0f0;
+            color: #999;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .game-container {
+                padding: 15px;
+            }
+            
+            button {
+                font-size: 14px;
+                padding: 10px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 Colorku</h1>
+        <p>Color Sudoku for iOS</p>
+    </div>
+
+    <div class="game-container">
+        <div class="controls">
+            <button onclick="showModeSelect()">New Game</button>
+            <button onclick="checkSolution()">Check</button>
+            <button onclick="togglePatterns()">Patterns: <span id="pattern-toggle">OFF</span></button>
+        </div>
+
+        <div id="mode-select" style="display: none; margin-bottom: 15px;">
+            <button onclick="startGame('single')" style="width: 100%; margin-bottom: 10px;">Single Player</button>
+            <button onclick="startGame('race')" style="width: 100%; margin-bottom: 10px;">Race Mode (2 Players)</button>
+            <button onclick="startGame('vs')" style="width: 100%;">VS Mode (Turn-based)</button>
+        </div>
+
+        <div class="difficulty-selector">
+            <button class="difficulty-btn active" data-diff="easy" onclick="setDifficulty('easy')">Easy</button>
+            <button class="difficulty-btn" data-diff="medium" onclick="setDifficulty('medium')">Medium</button>
+            <button class="difficulty-btn" data-diff="hard" onclick="setDifficulty('hard')">Hard</button>
+        </div>
+
+        <div class="multiplayer-mode" id="multiplayer-info"></div>
+
+        <div class="timer" id="timer">00:00</div>
+
+        <div class="message" id="message"></div>
+
+        <div class="grid" id="grid"></div>
+
+        <div class="color-palette" id="palette"></div>
+    </div>
+
+    <script>
+        const COLORS = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
+            '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739'
+        ];
+
+        const PATTERNS = [
+            'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)',
+            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)',
+            'radial-gradient(circle, rgba(255,255,255,.3) 1px, transparent 1px)',
+            'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)',
+            'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,255,255,.3) 3px, rgba(255,255,255,.3) 6px)',
+            'conic-gradient(from 45deg, transparent 0deg, rgba(255,255,255,.3) 90deg, transparent 180deg, rgba(255,255,255,.3) 270deg)',
+            'repeating-linear-gradient(30deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)',
+            'repeating-linear-gradient(60deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)',
+            'repeating-linear-gradient(120deg, transparent, transparent 2px, rgba(255,255,255,.3) 2px, rgba(255,255,255,.3) 4px)'
+        ];
+
+        let grid = [];
+        let solution = [];
+        let selectedCell = null;
+        let selectedColor = 0;
+        let difficulty = 'easy';
+        let timer = 0;
+        let timerInterval = null;
+        let patternsEnabled = false;
+        let gameMode = 'single';
+        let currentPlayer = 1;
+        let player1Time = 0;
+        let player2Time = 0;
+
+        function generateSolution() {
+            const grid = Array(9).fill().map(() => Array(9).fill(0));
+            
+            function isValid(grid, row, col, num) {
+                for (let i = 0; i < 9; i++) {
+                    if (grid[row][i] === num || grid[i][col] === num) return false;
+                }
+                const boxRow = Math.floor(row / 3) * 3;
+                const boxCol = Math.floor(col / 3) * 3;
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        if (grid[boxRow + i][boxCol + j] === num) return false;
+                    }
+                }
+                return true;
+            }
+
+            function fillGrid(grid) {
+                for (let row = 0; row < 9; row++) {
+                    for (let col = 0; col < 9; col++) {
+                        if (grid[row][col] === 0) {
+                            const numbers = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+                            for (let num of numbers) {
+                                if (isValid(grid, row, col, num)) {
+                                    grid[row][col] = num;
+                                    if (fillGrid(grid)) return true;
+                                    grid[row][col] = 0;
+                                }
+                            }
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            fillGrid(grid);
+            return grid;
+        }
+
+        function createPuzzle(solution, difficulty) {
+            const puzzle = solution.map(row => [...row]);
+            const cellsToRemove = difficulty === 'easy' ? 30 : difficulty === 'medium' ? 45 : 55;
+            let removed = 0;
+            
+            while (removed < cellsToRemove) {
+                const row = Math.floor(Math.random() * 9);
+                const col = Math.floor(Math.random() * 9);
+                if (puzzle[row][col] !== 0) {
+                    puzzle[row][col] = 0;
+                    removed++;
+                }
+            }
+            
+            return puzzle;
+        }
+
+        function initGame() {
+            solution = generateSolution();
+            grid = createPuzzle(solution, difficulty);
+            renderGrid();
+            renderPalette();
+            startTimer();
+        }
+
+        function renderGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    
+                    if (grid[i][j] !== 0) {
+                        cell.style.background = COLORS[grid[i][j] - 1];
+                        cell.classList.add('fixed');
+                        if (patternsEnabled) {
+                            cell.classList.add('pattern');
+                            cell.style.backgroundImage = PATTERNS[grid[i][j] - 1];
+                            cell.style.backgroundColor = COLORS[grid[i][j] - 1];
+                        }
+                    }
+                    
+                    cell.addEventListener('click', () => selectCell(i, j));
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function renderPalette() {
+            const palette = document.getElementById('palette');
+            palette.innerHTML = '';
+            
+            COLORS.forEach((color, idx) => {
+                const btn = document.createElement('div');
+                btn.className = 'color-btn';
+                btn.style.background = color;
+                if (idx === selectedColor) btn.classList.add('selected');
+                
+                if (patternsEnabled) {
+                    btn.classList.add('pattern');
+                    btn.style.backgroundImage = PATTERNS[idx];
+                    btn.style.backgroundColor = color;
+                }
+                
+                btn.addEventListener('click', () => {
+                    selectedColor = idx;
+                    renderPalette();
+                });
+                palette.appendChild(btn);
+            });
+            
+            // Add eraser
+            const eraser = document.createElement('div');
+            eraser.className = 'color-btn';
+            eraser.style.background = 'white';
+            eraser.style.border = '3px dashed #ccc';
+            eraser.textContent = '✖';
+            eraser.style.display = 'flex';
+            eraser.style.alignItems = 'center';
+            eraser.style.justifyContent = 'center';
+            eraser.style.fontSize = '24px';
+            eraser.style.color = '#999';
+            eraser.addEventListener('click', () => {
+                if (selectedCell) {
+                    const [row, col] = selectedCell;
+                    if (solution[row][col] !== grid[row][col]) {
+                        grid[row][col] = 0;
+                        renderGrid();
+                    }
+                }
+            });
+            palette.appendChild(eraser);
+        }
+
+        function selectCell(row, col) {
+            if (solution[row][col] === grid[row][col] && grid[row][col] !== 0) return;
+            
+            selectedCell = [row, col];
+            
+            if (selectedColor !== null) {
+                grid[row][col] = selectedColor + 1;
+                renderGrid();
+                
+                if (gameMode === 'vs') {
+                    switchPlayer();
+                }
+            }
+        }
+
+        function setDifficulty(diff) {
+            difficulty = diff;
+            document.querySelectorAll('.difficulty-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.diff === diff);
+            });
+        }
+
+        function showModeSelect() {
+            const modeSelect = document.getElementById('mode-select');
+            modeSelect.style.display = modeSelect.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function startGame(mode) {
+            gameMode = mode;
+            document.getElementById('mode-select').style.display = 'none';
+            
+            if (mode === 'race' || mode === 'vs') {
+                document.getElementById('multiplayer-info').style.display = 'block';
+                currentPlayer = 1;
+                player1Time = 0;
+                player2Time = 0;
+                updateMultiplayerInfo();
+            } else {
+                document.getElementById('multiplayer-info').style.display = 'none';
+            }
+            
+            initGame();
+        }
+
+        function updateMultiplayerInfo() {
+            const info = document.getElementById('multiplayer-info');
+            if (gameMode === 'vs') {
+                info.innerHTML = `
+                    <div class="player-info">
+                        <div class="player ${currentPlayer === 1 ? 'active' : 'inactive'}">
+                            <div>Player 1</div>
+                            <div>${formatTime(player1Time)}</div>
+                        </div>
+                        <div class="player ${currentPlayer === 2 ? 'active' : 'inactive'}">
+                            <div>Player 2</div>
+                            <div>${formatTime(player2Time)}</div>
+                        </div>
+                    </div>
+                `;
+            } else if (gameMode === 'race') {
+                info.innerHTML = `
+                    <div class="player-info">
+                        <div class="player active">
+                            <div>Player 1 & 2</div>
+                            <div>Same puzzle - Race!</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function switchPlayer() {
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            updateMultiplayerInfo();
+        }
+
+        function startTimer() {
+            timer = 0;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer++;
+                if (gameMode === 'vs') {
+                    if (currentPlayer === 1) player1Time++;
+                    else player2Time++;
+                    updateMultiplayerInfo();
+                }
+                document.getElementById('timer').textContent = formatTime(timer);
+            }, 1000);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        function checkSolution() {
+            let correct = true;
+            const cells = document.querySelectorAll('.cell');
+            
+            cells.forEach((cell, idx) => {
+                const row = Math.floor(idx / 9);
+                const col = idx % 9;
+                
+                if (grid[row][col] !== solution[row][col]) {
+                    correct = false;
+                    if (grid[row][col] !== 0) {
+                        cell.classList.add('error');
+                        setTimeout(() => cell.classList.remove('error'), 500);
+                    }
+                }
+            });
+            
+            const msg = document.getElementById('message');
+            if (correct) {
+                msg.textContent = '🎉 Perfect! You solved it in ' + formatTime(timer);
+                msg.className = 'message success';
+                clearInterval(timerInterval);
+            } else {
+                msg.textContent = '❌ Not quite right. Keep trying!';
+                msg.className = 'message error';
+                setTimeout(() => msg.className = 'message', 2000);
+            }
+        }
+
+        function togglePatterns() {
+            patternsEnabled = !patternsEnabled;
+            document.getElementById('pattern-toggle').textContent = patternsEnabled ? 'ON' : 'OFF';
+            renderGrid();
+            renderPalette();
+        }
+
+        // Initialize on load
+        initGame();
+    </script>
+</body>
+</html>
