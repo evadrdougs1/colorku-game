@@ -123,10 +123,19 @@
             box-shadow: inset 0 0 0 3px #ff4444;
         }
 
+        .cell.partner-move {
+            animation: partnerPulse 0.5s;
+        }
+
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-5px); }
             75% { transform: translateX(5px); }
+        }
+
+        @keyframes partnerPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
         }
 
         .cell:nth-child(9n+3),
@@ -265,6 +274,29 @@
             margin-bottom: 15px;
         }
 
+        .partner-status {
+            text-align: center;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            color: #1976d2;
+            font-weight: 600;
+            display: none;
+        }
+
+        .partner-status.connected {
+            background: #c8e6c9;
+            color: #2e7d32;
+            display: block;
+        }
+
+        .partner-status.waiting {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+
         @media (max-width: 600px) {
             h1 {
                 font-size: 1.8em;
@@ -289,7 +321,7 @@
 <body>
     <div class="header">
         <h1>🎨 Colorku</h1>
-        <p>Color Sudoku - Async Multiplayer</p>
+        <p>Color Sudoku - Multiplayer Edition</p>
     </div>
 
     <div class="game-container">
@@ -300,28 +332,29 @@
         </div>
 
         <div id="mode-select" style="display: none; margin-bottom: 15px;">
-            <button onclick="startGame('single')" style="width: 100%; margin-bottom: 10px;">Single Player</button>
-            <button onclick="showOnlineOptions()" style="width: 100%; background: #ff9800;">🌐 Multiplayer Challenge</button>
+            <button onclick="startGame('single')" style="width: 100%; margin-bottom: 10px;">Solo Play</button>
+            <button onclick="showOnlineOptions('coop')" style="width: 100%; margin-bottom: 10px; background: #4caf50;">👥 Co-op Mode (Same Puzzle Together)</button>
+            <button onclick="showOnlineOptions('challenge')" style="width: 100%; background: #ff9800;">🏆 Challenge Mode (Race Separately)</button>
         </div>
 
         <div class="online-lobby" id="online-lobby">
-            <h3 style="text-align: center; color: #333; margin-bottom: 15px;">Multiplayer Challenge</h3>
+            <h3 style="text-align: center; color: #333; margin-bottom: 15px;" id="lobby-title">Multiplayer</h3>
             <div id="create-room" style="display: none;">
-                <p style="text-align: center; color: #666; margin-bottom: 10px;">Share this code with friends:</p>
+                <p style="text-align: center; color: #666; margin-bottom: 10px;">Share this code:</p>
                 <div class="room-code" id="room-code">----</div>
-                <p style="text-align: center; color: #666; font-size: 14px; margin-bottom: 15px;">They can join anytime! Your times will be compared.</p>
-                <button onclick="startChallengeNow()" style="width: 100%; margin-bottom: 10px; background: #4caf50;">Start Playing</button>
+                <p style="text-align: center; color: #666; font-size: 14px; margin-bottom: 15px;" id="room-description"></p>
+                <button onclick="startNow()" style="width: 100%; margin-bottom: 10px; background: #4caf50;" id="start-button">Start Playing</button>
                 <button onclick="cancelRoom()" style="width: 100%; background: #999;">Cancel</button>
             </div>
             <div id="join-room" style="display: none;">
-                <p style="text-align: center; color: #666; margin-bottom: 10px;">Enter challenge code:</p>
+                <p style="text-align: center; color: #666; margin-bottom: 10px;">Enter code:</p>
                 <input type="text" class="join-input" id="join-code" maxlength="4" placeholder="----">
-                <button onclick="joinChallenge()" style="width: 100%; margin-bottom: 10px;">Join Challenge</button>
+                <button onclick="joinGame()" style="width: 100%; margin-bottom: 10px;">Join Game</button>
                 <button onclick="hideOnlineOptions()" style="width: 100%; background: #999;">Back</button>
             </div>
             <div id="online-choice" style="display: block;">
-                <button onclick="createChallenge()" style="width: 100%; margin-bottom: 10px; background: #4caf50;">Create Challenge</button>
-                <button onclick="showJoinRoom()" style="width: 100%; margin-bottom: 10px; background: #2196F3;">Join Challenge</button>
+                <button onclick="createRoom()" style="width: 100%; margin-bottom: 10px; background: #4caf50;">Create Room</button>
+                <button onclick="showJoinRoom()" style="width: 100%; margin-bottom: 10px; background: #2196F3;">Join Room</button>
                 <button onclick="hideOnlineOptions()" style="width: 100%; background: #999;">Back</button>
             </div>
         </div>
@@ -331,6 +364,8 @@
             <button class="difficulty-btn" data-diff="medium" onclick="setDifficulty('medium')">Medium</button>
             <button class="difficulty-btn" data-diff="hard" onclick="setDifficulty('hard')">Hard</button>
         </div>
+
+        <div class="partner-status" id="partner-status"></div>
 
         <div class="leaderboard" id="leaderboard" style="display: none;"></div>
 
@@ -373,9 +408,10 @@
         let challengeCode = null;
         let playerName = null;
         let leaderboardInterval = null;
+        let syncInterval = null;
+        let multiplayerType = 'challenge';
 
         function generateSolution(seed) {
-            // Seeded random for consistent puzzles
             let rng = seed;
             function random() {
                 rng = (rng * 9301 + 49297) % 233280;
@@ -449,13 +485,17 @@
             solution = generateSolution(gameSeed);
             grid = createPuzzle(solution, difficulty, gameSeed);
             
-            if (gameMode === 'challenge' && !seed) {
+            if ((gameMode === 'challenge' || gameMode === 'coop') && !seed) {
                 saveChallengeData(gameSeed);
             }
             
             renderGrid();
             renderPalette();
             startTimer();
+
+            if (gameMode === 'coop') {
+                startCoopSync();
+            }
         }
 
         function renderGrid() {
@@ -528,6 +568,9 @@
                     if (solution[row][col] !== grid[row][col]) {
                         grid[row][col] = 0;
                         renderGrid();
+                        if (gameMode === 'coop') {
+                            saveCoopState();
+                        }
                     }
                 }
             });
@@ -542,6 +585,10 @@
             if (selectedColor !== null) {
                 grid[row][col] = selectedColor + 1;
                 renderGrid();
+
+                if (gameMode === 'coop') {
+                    saveCoopState();
+                }
             }
         }
 
@@ -555,12 +602,14 @@
         function showModeSelect() {
             document.getElementById('mode-select').style.display = 'block';
             document.getElementById('online-lobby').style.display = 'none';
+            stopAllIntervals();
         }
 
         function startGame(mode) {
             gameMode = mode;
             document.getElementById('mode-select').style.display = 'none';
             document.getElementById('leaderboard').style.display = 'none';
+            document.getElementById('partner-status').style.display = 'none';
             initGame();
         }
 
@@ -603,6 +652,9 @@
                 if (gameMode === 'challenge') {
                     submitScore(timer);
                     msg.textContent = '🎉 Finished! Check leaderboard below!';
+                } else if (gameMode === 'coop') {
+                    markCoopComplete();
+                    msg.textContent = '🎉 You both did it! Time: ' + formatTime(timer);
                 } else {
                     msg.textContent = '🎉 Perfect! You solved it in ' + formatTime(timer);
                 }
@@ -621,10 +673,17 @@
             renderPalette();
         }
 
-        // Challenge functions
-        function showOnlineOptions() {
+        // Multiplayer functions
+        function showOnlineOptions(type) {
+            multiplayerType = type;
             document.getElementById('mode-select').style.display = 'none';
             document.getElementById('online-lobby').style.display = 'block';
+            
+            if (type === 'coop') {
+                document.getElementById('lobby-title').textContent = '👥 Co-op Mode';
+            } else {
+                document.getElementById('lobby-title').textContent = '🏆 Challenge Mode';
+            }
         }
 
         function hideOnlineOptions() {
@@ -632,24 +691,44 @@
             document.getElementById('mode-select').style.display = 'block';
         }
 
-        function createChallenge() {
+        function createRoom() {
             challengeCode = Math.random().toString(36).substring(2, 6).toUpperCase();
             playerName = 'Player' + Math.floor(Math.random() * 1000);
             
             document.getElementById('room-code').textContent = challengeCode;
             document.getElementById('online-choice').style.display = 'none';
             document.getElementById('create-room').style.display = 'block';
+            
+            if (multiplayerType === 'coop') {
+                document.getElementById('room-description').textContent = 'Work together on the same puzzle in real-time!';
+                document.getElementById('start-button').textContent = 'Wait for Partner';
+                document.getElementById('start-button').disabled = true;
+                document.getElementById('start-button').style.opacity = '0.5';
+                checkForPartner();
+            } else {
+                document.getElementById('room-description').textContent = 'They can join anytime! Your times will be compared.';
+                document.getElementById('start-button').textContent = 'Start Playing';
+                document.getElementById('start-button').disabled = false;
+                document.getElementById('start-button').style.opacity = '1';
+            }
         }
 
-        function startChallengeNow() {
-            gameMode = 'challenge';
-            document.getElementById('online-lobby').style.display = 'none';
-            document.getElementById('leaderboard').style.display = 'block';
-            initGame();
-            updateLeaderboard();
-            
-            // Poll leaderboard every 5 seconds
-            leaderboardInterval = setInterval(updateLeaderboard, 5000);
+        function startNow() {
+            if (multiplayerType === 'coop') {
+                gameMode = 'coop';
+                document.getElementById('online-lobby').style.display = 'none';
+                document.getElementById('partner-status').className = 'partner-status connected';
+                document.getElementById('partner-status').textContent = '✅ Playing with partner!';
+                initGame();
+                startCoopSync();
+            } else {
+                gameMode = 'challenge';
+                document.getElementById('online-lobby').style.display = 'none';
+                document.getElementById('leaderboard').style.display = 'block';
+                initGame();
+                updateLeaderboard();
+                leaderboardInterval = setInterval(updateLeaderboard, 5000);
+            }
         }
 
         function showJoinRoom() {
@@ -657,7 +736,7 @@
             document.getElementById('join-room').style.display = 'block';
         }
 
-        function joinChallenge() {
+        function joinGame() {
             const code = document.getElementById('join-code').value.trim().toUpperCase();
             if (code.length !== 4) {
                 showMessage('Please enter a 4-character code', 'error');
@@ -669,13 +748,24 @@
             
             loadChallengeData(code, (data) => {
                 if (data) {
-                    gameMode = 'challenge';
-                    document.getElementById('online-lobby').style.display = 'none';
-                    document.getElementById('leaderboard').style.display = 'block';
-                    initGame(data.seed);
-                    difficulty = data.difficulty;
-                    updateLeaderboard();
-                    leaderboardInterval = setInterval(updateLeaderboard, 5000);
+                    if (multiplayerType === 'coop') {
+                        gameMode = 'coop';
+                        document.getElementById('online-lobby').style.display = 'none';
+                        document.getElementById('partner-status').className = 'partner-status connected';
+                        document.getElementById('partner-status').textContent = '✅ Playing with partner!';
+                        initGame(data.seed);
+                        difficulty = data.difficulty;
+                        startCoopSync();
+                        notifyPartnerJoined();
+                    } else {
+                        gameMode = 'challenge';
+                        document.getElementById('online-lobby').style.display = 'none';
+                        document.getElementById('leaderboard').style.display = 'block';
+                        initGame(data.seed);
+                        difficulty = data.difficulty;
+                        updateLeaderboard();
+                        leaderboardInterval = setInterval(updateLeaderboard, 5000);
+                    }
                 } else {
                     showMessage('Challenge not found!', 'error');
                 }
@@ -687,13 +777,76 @@
             document.getElementById('create-room').style.display = 'none';
             document.getElementById('online-choice').style.display = 'block';
             hideOnlineOptions();
+            stopAllIntervals();
         }
 
+        // Co-op specific functions
+        function startCoopSync() {
+            clearInterval(syncInterval);
+            syncInterval = setInterval(() => {
+                const remoteGrid = getCoopState();
+                if (remoteGrid && JSON.stringify(remoteGrid) !== JSON.stringify(grid)) {
+                    const changed = [];
+                    for (let i = 0; i < 9; i++) {
+                        for (let j = 0; j < 9; j++) {
+                            if (remoteGrid[i][j] !== grid[i][j]) {
+                                grid[i][j] = remoteGrid[i][j];
+                                changed.push(i * 9 + j);
+                            }
+                        }
+                    }
+                    renderGrid();
+                    // Animate changed cells
+                    changed.forEach(idx => {
+                        const cell = document.querySelectorAll('.cell')[idx];
+                        if (cell) {
+                            cell.classList.add('partner-move');
+                            setTimeout(() => cell.classList.remove('partner-move'), 500);
+                        }
+                    });
+                }
+            }, 1000);
+        }
+
+        function saveCoopState() {
+            localStorage.setItem('coop_grid_' + challengeCode, JSON.stringify(grid));
+            localStorage.setItem('coop_updated_' + challengeCode, Date.now());
+        }
+
+        function getCoopState() {
+            const data = localStorage.getItem('coop_grid_' + challengeCode);
+            return data ? JSON.parse(data) : null;
+        }
+
+        function checkForPartner() {
+            const checkInterval = setInterval(() => {
+                const joined = localStorage.getItem('coop_partner_' + challengeCode);
+                if (joined) {
+                    clearInterval(checkInterval);
+                    document.getElementById('start-button').textContent = 'Start Together!';
+                    document.getElementById('start-button').disabled = false;
+                    document.getElementById('start-button').style.opacity = '1';
+                    showMessage('Partner joined! Ready to start!', 'success');
+                }
+            }, 1000);
+        }
+
+        function notifyPartnerJoined() {
+            localStorage.setItem('coop_partner_' + challengeCode, 'true');
+        }
+
+        function markCoopComplete() {
+            localStorage.setItem('coop_complete_' + challengeCode, 'true');
+            stopAllIntervals();
+        }
+
+        // Challenge mode functions
         function saveChallengeData(seed) {
             const data = {
                 seed: seed,
                 difficulty: difficulty,
-                created: Date.now()
+                created: Date.now(),
+                type: multiplayerType
             };
             localStorage.setItem('challenge_' + challengeCode, JSON.stringify(data));
         }
@@ -736,6 +889,12 @@
                 `;
             });
             leaderboard.innerHTML = html;
+        }
+
+        function stopAllIntervals() {
+            clearInterval(timerInterval);
+            clearInterval(leaderboardInterval);
+            clearInterval(syncInterval);
         }
 
         function showMessage(text, type) {
