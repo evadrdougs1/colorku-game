@@ -438,6 +438,8 @@
         let multiplayerType = null;
         let challengeCode = null;
         let syncInterval = null;
+        let playerName = null;
+        let leaderboardInterval = null;
 
         function init() {
             // Check for game ID in URL
@@ -668,6 +670,11 @@
                 grid[row][col] = selectedColor + 1;
                 renderGrid();
                 saveGameState();
+                
+                // Save to coop if in coop mode
+                if (gameMode === 'coop' && challengeCode) {
+                    localStorage.setItem('coop_grid_' + challengeCode, JSON.stringify(grid));
+                }
             }
         }
 
@@ -716,7 +723,17 @@
             if (correct) {
                 clearInterval(timerInterval);
                 saveGameState();
-                msg.textContent = '🎉 Perfect! Completed in ' + formatTime(elapsedTime);
+                
+                // Handle multiplayer completion
+                if (gameMode === 'challenge' && challengeCode) {
+                    submitScore(elapsedTime);
+                    msg.textContent = '🎉 Finished in ' + formatTime(elapsedTime) + '! Check leaderboard!';
+                } else if (gameMode === 'coop' && challengeCode) {
+                    markCoopComplete();
+                    msg.textContent = '🎉 You both did it! Time: ' + formatTime(elapsedTime);
+                } else {
+                    msg.textContent = '🎉 Perfect! Completed in ' + formatTime(elapsedTime);
+                }
                 msg.className = 'message success';
                 
                 // Mark as complete
@@ -860,15 +877,170 @@
         }
 
         function joinGame() {
-            showMessage('Multiplayer join coming soon!', 'info');
+            const code = document.getElementById('join-code').value.trim().toUpperCase();
+            if (code.length !== 4) {
+                showMessage('Please enter a 4-character code', 'error');
+                return;
+            }
+            
+            challengeCode = code;
+            playerName = 'Player' + Math.floor(Math.random() * 1000);
+            
+            const challengeData = localStorage.getItem('challenge_' + code);
+            if (!challengeData) {
+                showMessage('Challenge not found!', 'error');
+                return;
+            }
+            
+            const data = JSON.parse(challengeData);
+            
+            if (multiplayerType === 'challenge') {
+                gameMode = 'challenge';
+                difficulty = data.difficulty;
+                startGameWithSeed(data.seed);
+                hideAllMenus();
+                showLeaderboard();
+                startLeaderboardSync();
+            } else if (multiplayerType === 'coop') {
+                gameMode = 'coop';
+                difficulty = data.difficulty;
+                startGameWithSeed(data.seed);
+                hideAllMenus();
+                notifyPartnerJoined();
+                startCoopSync();
+            }
         }
 
         function startNow() {
-            showMessage('Multiplayer start coming soon!', 'info');
+            if (!challengeCode) return;
+            
+            playerName = 'Player' + Math.floor(Math.random() * 1000);
+            
+            if (multiplayerType === 'challenge') {
+                gameMode = 'challenge';
+                const seed = Date.now();
+                saveChallengeData(seed);
+                startGameWithSeed(seed);
+                hideAllMenus();
+                showLeaderboard();
+                startLeaderboardSync();
+            } else if (multiplayerType === 'coop') {
+                const partner = localStorage.getItem('coop_partner_' + challengeCode);
+                if (!partner) {
+                    showMessage('Waiting for partner to join...', 'info');
+                    return;
+                }
+                gameMode = 'coop';
+                const seed = Date.now();
+                saveChallengeData(seed);
+                startGameWithSeed(seed);
+                hideAllMenus();
+                startCoopSync();
+            }
+        }
+
+        function startGameWithSeed(seed) {
+            gameId = 'game_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            solution = generateSolution(seed);
+            grid = createPuzzle(solution, difficulty, seed);
+            originalPuzzle = grid.map(row => [...row]);
+            elapsedTime = 0;
+            lastSaveTime = Date.now();
+            
+            saveGameState();
+            updateURL();
+            renderGrid();
+            renderPalette();
+            startTimer();
+        }
+
+        function saveChallengeData(seed) {
+            const data = {
+                seed: seed,
+                difficulty: difficulty,
+                type: multiplayerType,
+                created: Date.now()
+            };
+            localStorage.setItem('challenge_' + challengeCode, JSON.stringify(data));
+        }
+
+        function submitScore(time) {
+            const scores = JSON.parse(localStorage.getItem('scores_' + challengeCode) || '[]');
+            const entry = {
+                player: playerName,
+                time: time,
+                timestamp: Date.now()
+            };
+            scores.push(entry);
+            scores.sort((a, b) => a.time - b.time);
+            localStorage.setItem('scores_' + challengeCode, JSON.stringify(scores));
+            updateLeaderboard();
+        }
+
+        function updateLeaderboard() {
+            const scores = JSON.parse(localStorage.getItem('scores_' + challengeCode) || '[]');
+            
+            let html = '<h3>🏆 Race Results</h3>';
+            if (scores.length === 0) {
+                html += '<p style="text-align: center; color: #999;">No finishers yet!</p>';
+            } else {
+                scores.forEach((score, idx) => {
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '•';
+                    const winner = idx === 0 ? ' winner' : '';
+                    html += `
+                        <div class="leaderboard-entry${winner}">
+                            <span>${medal} ${score.player}</span>
+                            <span>${formatTime(score.time)}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            const leaderboard = document.getElementById('saved-games');
+            leaderboard.innerHTML = html;
+            leaderboard.style.display = 'block';
+        }
+
+        function showLeaderboard() {
+            updateLeaderboard();
+        }
+
+        function startLeaderboardSync() {
+            clearInterval(leaderboardInterval);
+            leaderboardInterval = setInterval(() => {
+                updateLeaderboard();
+            }, 3000);
+        }
+
+        function startCoopSync() {
+            clearInterval(syncInterval);
+            syncInterval = setInterval(() => {
+                const remoteGrid = localStorage.getItem('coop_grid_' + challengeCode);
+                if (remoteGrid) {
+                    const remote = JSON.parse(remoteGrid);
+                    if (JSON.stringify(remote) !== JSON.stringify(grid)) {
+                        grid = remote;
+                        renderGrid();
+                    }
+                }
+            }, 1000);
+            
+            // Save initial state
+            localStorage.setItem('coop_grid_' + challengeCode, JSON.stringify(grid));
+        }
+
+        function notifyPartnerJoined() {
+            localStorage.setItem('coop_partner_' + challengeCode, 'true');
+        }
+
+        function markCoopComplete() {
+            localStorage.setItem('coop_complete_' + challengeCode, 'true');
         }
 
         function cancelRoom() {
             hideAllMenus();
+            clearInterval(leaderboardInterval);
+            clearInterval(syncInterval);
         }
 
         function showMessage(text, type) {
